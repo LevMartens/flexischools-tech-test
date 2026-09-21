@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import {
   ActivityIndicator,
   Pressable,
+  type SectionListRenderItem,
   SectionList,
   StyleSheet,
   Text,
@@ -9,14 +10,16 @@ import {
 } from 'react-native';
 
 import { fetchProducts } from '../api/mockApi';
+import { ProductRow } from '../components/ProductRow';
 import {
   getItemCount,
   getOrderTotalCents,
   initialOrderState,
   orderReducer,
-  type OrderAction,
 } from '../state/orderReducer';
+import { MIN_TOUCH_TARGET, colors, fontSize, radius, spacing } from '../theme';
 import type { Product, ProductCategory } from '../types';
+import { formatCents } from '../utils/money';
 
 type Status = 'loading' | 'error' | 'ready';
 
@@ -24,10 +27,6 @@ type Section = {
   title: ProductCategory;
   data: Product[];
 };
-
-function formatCents(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
 
 /** Groups products by category, keeping the order the categories first appear in. */
 function buildSections(products: Product[]): Section[] {
@@ -44,59 +43,6 @@ function buildSections(products: Product[]): Section[] {
   }
 
   return sections;
-}
-
-type ProductRowProps = {
-  product: Product;
-  quantity: number;
-  dispatch: (action: OrderAction) => void;
-};
-
-function ProductRow({ product, quantity, dispatch }: ProductRowProps) {
-  return (
-    <View style={styles.row}>
-      <View style={styles.rowText}>
-        <Text style={[styles.rowName, !product.isAvailable && styles.rowNameUnavailable]}>
-          {product.name}
-        </Text>
-        <Text style={styles.rowPrice}>{formatCents(product.priceCents)}</Text>
-      </View>
-
-      {!product.isAvailable ? (
-        <Text style={styles.soldOut}>Sold out</Text>
-      ) : quantity === 0 ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Add ${product.name}`}
-          style={styles.addButton}
-          onPress={() => dispatch({ type: 'add', product })}>
-          <Text style={styles.addButtonText}>Add</Text>
-        </Pressable>
-      ) : (
-        <View style={styles.stepper}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Remove one ${product.name}`}
-            style={styles.stepperButton}
-            onPress={() => dispatch({ type: 'decrement', productId: product.id })}>
-            <Text style={styles.stepperButtonText}>−</Text>
-          </Pressable>
-
-          <Text style={styles.stepperQuantity} accessibilityLabel={`${product.name} quantity`}>
-            {quantity}
-          </Text>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Add another ${product.name}`}
-            style={styles.stepperButton}
-            onPress={() => dispatch({ type: 'increment', productId: product.id })}>
-            <Text style={styles.stepperButtonText}>+</Text>
-          </Pressable>
-        </View>
-      )}
-    </View>
-  );
 }
 
 export default function ProductListScreen() {
@@ -137,6 +83,24 @@ export default function ProductListScreen() {
     load();
   }, [load]);
 
+  // Stable across renders, so a memoised row only re-renders when its own
+  // product or quantity changes.
+  const handleAdd = useCallback((product: Product) => {
+    dispatch({ type: 'add', product });
+  }, []);
+
+  const handleIncrement = useCallback((productId: string) => {
+    dispatch({ type: 'increment', productId });
+  }, []);
+
+  const handleDecrement = useCallback((productId: string) => {
+    dispatch({ type: 'decrement', productId });
+  }, []);
+
+  const handleClear = useCallback(() => {
+    dispatch({ type: 'clear' });
+  }, []);
+
   const sections = useMemo(() => buildSections(products), [products]);
 
   const quantityByProductId = useMemo(() => {
@@ -148,6 +112,19 @@ export default function ProductListScreen() {
 
     return quantities;
   }, [order]);
+
+  const renderItem = useCallback<SectionListRenderItem<Product, Section>>(
+    ({ item }) => (
+      <ProductRow
+        product={item}
+        quantity={quantityByProductId.get(item.id) ?? 0}
+        onAdd={handleAdd}
+        onIncrement={handleIncrement}
+        onDecrement={handleDecrement}
+      />
+    ),
+    [quantityByProductId, handleAdd, handleIncrement, handleDecrement]
+  );
 
   const itemCount = getItemCount(order);
   const totalCents = getOrderTotalCents(order);
@@ -167,7 +144,7 @@ export default function ProductListScreen() {
         <Text style={styles.errorText}>{errorMessage}</Text>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Retry"
+          accessibilityLabel="Retry loading the menu"
           style={styles.retryButton}
           onPress={load}>
           <Text style={styles.retryButtonText}>Retry</Text>
@@ -181,20 +158,12 @@ export default function ProductListScreen() {
       <SectionList
         sections={sections}
         keyExtractor={(product) => product.id}
-        contentContainerStyle={
-          sections.length === 0 ? styles.emptyContent : styles.listContent
-        }
+        contentContainerStyle={sections.length === 0 ? styles.emptyContent : styles.listContent}
         stickySectionHeadersEnabled={false}
         renderSectionHeader={({ section }) => (
           <Text style={styles.sectionHeader}>{section.title}</Text>
         )}
-        renderItem={({ item }) => (
-          <ProductRow
-            product={item}
-            quantity={quantityByProductId.get(item.id) ?? 0}
-            dispatch={dispatch}
-          />
-        )}
+        renderItem={renderItem}
         ListEmptyComponent={
           <View style={styles.centered}>
             <Text style={styles.centeredText}>No products are on the menu today.</Text>
@@ -210,8 +179,9 @@ export default function ProductListScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Clear order"
-            onPress={() => dispatch({ type: 'clear' })}>
-            <Text style={styles.clearText}>Clear</Text>
+            style={styles.clearButton}
+            onPress={handleClear}>
+            <Text style={styles.clearButtonText}>Clear</Text>
           </Pressable>
         </View>
       )}
@@ -222,134 +192,77 @@ export default function ProductListScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.background,
   },
   centered: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
-    gap: 12,
+    padding: spacing.xl,
+    gap: spacing.md,
   },
   centeredText: {
-    fontSize: 16,
-    color: '#444',
+    fontSize: fontSize.lg,
+    color: colors.textMuted,
     textAlign: 'center',
   },
   errorText: {
-    fontSize: 16,
-    color: '#b00020',
+    fontSize: fontSize.lg,
+    color: colors.danger,
     textAlign: 'center',
   },
   retryButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    backgroundColor: '#1d4ed8',
+    minHeight: MIN_TOUCH_TARGET,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
   },
   retryButtonText: {
-    color: '#fff',
-    fontSize: 16,
+    fontSize: fontSize.lg,
     fontWeight: '600',
+    color: colors.onPrimary,
   },
   listContent: {
-    paddingBottom: 24,
+    paddingBottom: spacing.xl,
   },
   emptyContent: {
     flexGrow: 1,
   },
   sectionHeader: {
-    paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 8,
-    fontSize: 13,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.sm,
+    fontSize: fontSize.sm,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    color: '#666',
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e0e0e0',
-  },
-  rowText: {
-    flex: 1,
-  },
-  rowName: {
-    fontSize: 16,
-    color: '#111',
-  },
-  rowNameUnavailable: {
-    color: '#999',
-  },
-  rowPrice: {
-    marginTop: 2,
-    fontSize: 14,
-    color: '#666',
-  },
-  soldOut: {
-    fontSize: 14,
-    color: '#999',
-  },
-  addButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: '#1d4ed8',
-  },
-  addButtonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  stepper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepperButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#eef2ff',
-  },
-  stepperButtonText: {
-    fontSize: 20,
-    lineHeight: 24,
-    color: '#1d4ed8',
-  },
-  stepperQuantity: {
-    minWidth: 20,
-    textAlign: 'center',
-    fontSize: 16,
-    fontWeight: '600',
+    color: colors.textMuted,
   },
   summary: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#e0e0e0',
-    backgroundColor: '#fafafa',
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
   },
   summaryText: {
-    fontSize: 16,
+    fontSize: fontSize.lg,
     fontWeight: '600',
-    color: '#111',
+    color: colors.text,
   },
-  clearText: {
-    fontSize: 15,
-    color: '#1d4ed8',
+  clearButton: {
+    minHeight: MIN_TOUCH_TARGET,
+    paddingHorizontal: spacing.md,
+    justifyContent: 'center',
+  },
+  clearButtonText: {
+    fontSize: fontSize.md,
     fontWeight: '600',
+    color: colors.primary,
   },
 });
