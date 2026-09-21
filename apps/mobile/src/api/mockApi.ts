@@ -1,5 +1,5 @@
-import { PRODUCTS } from '../data/products';
-import type { OrderLine, Product } from '../types';
+import { PRODUCTS } from "../data/products";
+import type { OrderLine, Product } from "../types";
 
 const LATENCY_MS = 600;
 
@@ -31,21 +31,26 @@ export async function fetchProducts(): Promise<Product[]> {
   await delay(LATENCY_MS);
 
   if (mockApiFailures.fetchProducts) {
-    throw new Error('Unable to load the menu. Please try again.');
+    throw new Error("Unable to load the menu. Please try again.");
   }
 
   return PRODUCTS;
 }
 
-export async function submitOrder(lines: OrderLine[]): Promise<OrderConfirmation> {
+export async function submitOrder(
+  lines: OrderLine[],
+): Promise<OrderConfirmation> {
   await delay(LATENCY_MS);
 
   if (mockApiFailures.submitOrder) {
-    throw new Error('Unable to place your order. Please try again.');
+    throw new Error("Unable to place your order. Please try again.");
   }
 
   return {
     orderId: `ORD-${Date.now()}`,
-    totalCents: lines.reduce((total, line) => total + line.product.priceCents * line.quantity, 0),
+    totalCents: lines.reduce(
+      (total, line) => total + line.product.priceCents * line.quantity,
+      0,
+    ),
   };
 }
