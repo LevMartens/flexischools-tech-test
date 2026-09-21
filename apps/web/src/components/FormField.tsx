@@ -1,9 +1,4 @@
-import {
-  useId,
-  type InputHTMLAttributes,
-  type ReactNode,
-  type SelectHTMLAttributes,
-} from 'react'
+import { useId, type ComponentPropsWithRef, type ReactNode } from 'react'
 
 /**
  * Props every field shares. The `id`, `aria-invalid` and `aria-describedby`
@@ -22,7 +17,7 @@ interface SharedFieldProps {
 
 type TextFieldProps = SharedFieldProps &
   Omit<
-    InputHTMLAttributes<HTMLInputElement>,
+    ComponentPropsWithRef<'input'>,
     'id' | 'aria-invalid' | 'aria-describedby' | 'aria-required' | 'type'
   > & {
     type?: 'text' | 'email' | 'tel' | 'date'
@@ -35,7 +30,7 @@ export interface SelectOption {
 
 type SelectFieldProps = SharedFieldProps &
   Omit<
-    SelectHTMLAttributes<HTMLSelectElement>,
+    ComponentPropsWithRef<'select'>,
     'id' | 'aria-invalid' | 'aria-describedby' | 'aria-required' | 'children'
   > & {
     options: SelectOption[]
