@@ -61,6 +61,18 @@ const STEPS: StepConfig[] = [
 
 const LAST_STEP = STEPS.length - 1
 
+/** Row labels on the review step. Mirrors the labels on the fields themselves. */
+const FIELD_LABELS: Record<FieldName, string> = {
+  businessName: 'Business name',
+  abn: 'ABN',
+  contactName: 'Contact name',
+  email: 'Email',
+  phone: 'Phone',
+  serviceType: 'Service type',
+  locationName: 'Location name',
+  startDate: 'Start date',
+}
+
 /** Where focus should go, and a nonce so repeating the same request re-fires. */
 interface FocusRequest {
   target: FieldName | 'heading'
@@ -97,6 +109,7 @@ type Action =
   | { type: 'submitSucceeded'; referenceId: string }
   | { type: 'submitFailed'; message: string }
   | { type: 'reset' }
+  | { type: 'goto'; stepIndex: number }
 
 const nextFocus = (state: State, target: FieldName | 'heading'): FocusRequest => ({
   target,
@@ -157,6 +170,17 @@ function reducer(state: State, action: Action): State {
     case 'submitFailed':
       return { ...state, status: 'failed', submitError: action.message }
 
+    case 'goto':
+      // Jumps to a step for editing. Values survive, and Next from there walks
+      // forward through the remaining steps as normal.
+      return {
+        ...state,
+        stepIndex: action.stepIndex,
+        submitError: null,
+        status: state.status === 'failed' ? 'idle' : state.status,
+        focus: nextFocus(state, 'heading'),
+      }
+
     case 'reset':
       // Everything goes: values, touched, step and submission status.
       return { ...INITIAL_STATE, focus: nextFocus(state, 'heading') }
@@ -182,6 +206,13 @@ export default function OnboardingFlow() {
   const { stepIndex, values, touched, status } = state
 
   const headingRef = useRef<HTMLHeadingElement>(null)
+  /*
+    Guards against double submit. A `status === 'submitting'` check is not
+    enough: several clicks fired before React re-renders all read the same
+    stale `status`, and the button's `disabled` attribute is not on the DOM
+    yet either. A ref flips synchronously, so the second click sees it.
+  */
+  const submittingRef = useRef(false)
   const fieldRefs = useRef<
     Partial<Record<FieldName, HTMLInputElement | HTMLSelectElement | null>>
   >({})
@@ -230,7 +261,7 @@ export default function OnboardingFlow() {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (status === 'submitting') return
+    if (submittingRef.current) return
 
     if (stepIndex < LAST_STEP) {
       dispatch({ type: 'advance', errors })
@@ -244,6 +275,7 @@ export default function OnboardingFlow() {
       return
     }
 
+    submittingRef.current = true
     dispatch({ type: 'submitStart' })
     try {
       const result = await submitOnboarding(values as OnboardingData)
@@ -256,6 +288,8 @@ export default function OnboardingFlow() {
             ? error.message
             : 'Something went wrong submitting your application.',
       })
+    } finally {
+      submittingRef.current = false
     }
   }
 
@@ -408,23 +442,49 @@ export default function OnboardingFlow() {
             <p className="mb-4 text-gray-700">
               Check the details below, then submit.
             </p>
-            <dl className="mb-6 divide-y divide-gray-200 border-y border-gray-200">
-              <ReviewRow label="Business name" value={values.businessName} />
-              <ReviewRow label="ABN" value={values.abn} />
-              <ReviewRow label="Contact name" value={values.contactName} />
-              <ReviewRow label="Email" value={values.email} />
-              <ReviewRow label="Phone" value={values.phone} />
-              <ReviewRow
-                label="Service type"
-                value={
-                  values.serviceType === ''
-                    ? ''
-                    : SERVICE_TYPE_LABELS[values.serviceType]
-                }
-              />
-              <ReviewRow label="Location name" value={values.locationName} />
-              <ReviewRow label="Start date" value={values.startDate} />
-            </dl>
+            {/* One group per data-entry step, driven by the same field lists
+                the form uses, so the two cannot drift apart. */}
+            {STEPS.slice(0, LAST_STEP).map((entryStep, index) => (
+              <section
+                key={entryStep.id}
+                aria-labelledby={`review-${entryStep.id}`}
+                className="mb-6"
+              >
+                <div className="flex items-baseline justify-between gap-4 border-b border-gray-200 pb-2">
+                  <h3
+                    id={`review-${entryStep.id}`}
+                    className="font-semibold text-gray-900"
+                  >
+                    {entryStep.name}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => dispatch({ type: 'goto', stepIndex: index })}
+                    disabled={status === 'submitting'}
+                    className="rounded font-medium text-blue-700 underline hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {/*
+                      Distinguishes the two Edit buttons for screen readers.
+                      The `{' '}` must sit outside the span: a leading space
+                      inside it is trimmed, giving "Editbusiness details".
+                    */}
+                    Edit{' '}
+                    <span className="sr-only">
+                      {entryStep.name.toLowerCase()}
+                    </span>
+                  </button>
+                </div>
+                <dl className="divide-y divide-gray-200">
+                  {entryStep.fields.map((field) => (
+                    <ReviewRow
+                      key={field}
+                      label={FIELD_LABELS[field]}
+                      value={displayValue(values, field)}
+                    />
+                  ))}
+                </dl>
+              </section>
+            ))}
           </>
         )}
 
@@ -456,16 +516,28 @@ export default function OnboardingFlow() {
             disabled={status === 'submitting'}
             className="rounded-md bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {stepIndex === LAST_STEP
-              ? status === 'submitting'
-                ? 'Submitting…'
-                : 'Submit application'
-              : 'Next'}
+            {stepIndex === LAST_STEP ? submitLabel(status) : 'Next'}
           </button>
         </div>
       </form>
     </div>
   )
+}
+
+function submitLabel(status: State['status']): string {
+  if (status === 'submitting') return 'Submitting…'
+  if (status === 'failed') return 'Retry'
+  return 'Submit application'
+}
+
+/** The review shows the service type's label, not its stored value. */
+function displayValue(values: FormValues, field: FieldName): string {
+  if (field === 'serviceType') {
+    return values.serviceType === ''
+      ? ''
+      : SERVICE_TYPE_LABELS[values.serviceType]
+  }
+  return values[field]
 }
 
 function ReviewRow({ label, value }: { label: string; value: string }) {
