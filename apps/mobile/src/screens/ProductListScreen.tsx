@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 
 import { fetchProducts } from '../api/mockApi';
+import { OrderReviewModal } from '../components/OrderReviewModal';
 import { ProductRow } from '../components/ProductRow';
 import {
   getItemCount,
@@ -50,6 +51,7 @@ export default function ProductListScreen() {
   const [products, setProducts] = useState<Product[]>([]);
   const [status, setStatus] = useState<Status>('loading');
   const [errorMessage, setErrorMessage] = useState('');
+  const [isReviewVisible, setIsReviewVisible] = useState(false);
 
   // Ignores the response of any request that a newer one has superseded.
   const latestRequestRef = useRef(0);
@@ -101,6 +103,14 @@ export default function ProductListScreen() {
     dispatch({ type: 'clear' });
   }, []);
 
+  const handleOpenReview = useCallback(() => {
+    setIsReviewVisible(true);
+  }, []);
+
+  const handleCloseReview = useCallback(() => {
+    setIsReviewVisible(false);
+  }, []);
+
   const sections = useMemo(() => buildSections(products), [products]);
 
   const quantityByProductId = useMemo(() => {
@@ -128,6 +138,7 @@ export default function ProductListScreen() {
 
   const itemCount = getItemCount(order);
   const totalCents = getOrderTotalCents(order);
+  const isOrderEmpty = itemCount === 0;
 
   if (status === 'loading') {
     return (
@@ -171,20 +182,42 @@ export default function ProductListScreen() {
         }
       />
 
-      {itemCount > 0 && (
-        <View style={styles.summary}>
-          <Text style={styles.summaryText}>
-            {itemCount} {itemCount === 1 ? 'item' : 'items'} · {formatCents(totalCents)}
-          </Text>
+      <View style={styles.summary}>
+        <Text style={styles.summaryText}>
+          {itemCount} {itemCount === 1 ? 'item' : 'items'} · {formatCents(totalCents)}
+        </Text>
+
+        <View style={styles.summaryActions}>
+          {isOrderEmpty ? null : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Clear order"
+              style={styles.clearButton}
+              onPress={handleClear}>
+              <Text style={styles.clearButtonText}>Clear</Text>
+            </Pressable>
+          )}
+
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Clear order"
-            style={styles.clearButton}
-            onPress={handleClear}>
-            <Text style={styles.clearButtonText}>Clear</Text>
+            accessibilityLabel="Review order"
+            accessibilityState={{ disabled: isOrderEmpty }}
+            disabled={isOrderEmpty}
+            style={[styles.reviewButton, isOrderEmpty && styles.reviewButtonDisabled]}
+            onPress={handleOpenReview}>
+            <Text style={[styles.reviewButtonText, isOrderEmpty && styles.textDisabled]}>
+              Review
+            </Text>
           </Pressable>
         </View>
-      )}
+      </View>
+
+      <OrderReviewModal
+        visible={isReviewVisible}
+        order={order}
+        onClose={handleCloseReview}
+        onOrderSubmitted={handleClear}
+      />
     </View>
   );
 }
@@ -255,6 +288,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
   },
+  summaryActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   clearButton: {
     minHeight: MIN_TOUCH_TARGET,
     paddingHorizontal: spacing.md,
@@ -264,5 +302,24 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     fontWeight: '600',
     color: colors.primary,
+  },
+  reviewButton: {
+    minHeight: MIN_TOUCH_TARGET,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+  },
+  reviewButtonDisabled: {
+    backgroundColor: colors.disabledSurface,
+  },
+  reviewButtonText: {
+    fontSize: fontSize.md,
+    fontWeight: '600',
+    color: colors.onPrimary,
+  },
+  textDisabled: {
+    color: colors.textDisabled,
   },
 });
