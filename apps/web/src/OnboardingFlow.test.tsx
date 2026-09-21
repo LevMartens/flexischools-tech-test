@@ -192,6 +192,28 @@ describe('focus management on a failed Next', () => {
     expect(screen.getByLabelText(/Contact name/)).toHaveFocus()
   })
 
+  it('reports an invalid email and stays on step 1', async () => {
+    const u = userEvent.setup()
+    render(<OnboardingFlow />)
+
+    // Everything valid except the email.
+    await fillBusinessStep(u)
+    await u.clear(screen.getByLabelText(/Email/))
+    await u.type(screen.getByLabelText(/Email/), 'not-an-email')
+    await next(u)
+
+    const email = screen.getByLabelText(/Email/)
+    expect(screen.getByText('Enter a valid email address')).toBeInTheDocument()
+    expect(email).toHaveAttribute('aria-invalid', 'true')
+    expect(email).toHaveFocus()
+
+    // Still on step 1: the service step never rendered.
+    expect(screen.getByText('Step 1 of 3')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'Service details' }),
+    ).toBeNull()
+  })
+
   it('reports a failed ABN checksum and stays on the step', async () => {
     const u = userEvent.setup()
     render(<OnboardingFlow />)
@@ -236,6 +258,13 @@ describe('focus management on a failed Next', () => {
       screen.getByText('Start date cannot be in the past'),
     ).toBeInTheDocument()
     expect(date).toHaveFocus()
+
+    // Blocked: still on step 2, and the review groups never rendered.
+    expect(screen.getByText('Step 2 of 3')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Business details' })).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: 'Submit application' }),
+    ).toBeNull()
   })
 })
 
@@ -467,6 +496,10 @@ describe('when submitting fails', () => {
     ).toBeInTheDocument()
     const service = screen.getByRole('region', { name: 'Service details' })
     expect(within(service).getByText('Canteen')).toBeInTheDocument()
+
+    // Held on review rather than pushed to a confirmation screen.
+    expect(screen.getByText('Step 3 of 3')).toBeInTheDocument()
+    expect(screen.queryByText('Application submitted')).toBeNull()
   })
 
   it('succeeds on retry', async () => {
