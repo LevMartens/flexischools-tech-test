@@ -30,7 +30,7 @@ npm run build   # tsc -b && vite build
 cd apps/mobile
 npm install
 npm start       # expo start, prints a QR code
-npm test        # jest, 23 tests
+npm test        # jest, 27 tests
 npm run lint    # expo lint
 ```
 
@@ -147,10 +147,6 @@ Incomplete:
   menu would need one.
 - **Mobile: phone layout only.** There is no tablet or landscape treatment, which a real
   POS would need.
-- **Mobile: no component tests for the loading, error and retry states.**
-  `ProductListScreen` has two component tests, covering the summary total after an add
-  and the disabled Review button on an empty order. The loading spinner, the error
-  message and the retry path have only been checked by hand.
 - **No availability re-check.** If a product sells out while it is already in an order,
   nothing notices. The reducer refuses to add an unavailable product, and an existing
   line goes unchecked at submit time.
@@ -176,16 +172,19 @@ Incomplete:
 
 1. Add product search and a tablet layout to the mobile app, and an unsaved-changes
    warning to the web form.
-2. Cover the mobile loading, error and retry states with component tests.
-3. Re-check availability at submit time, so an item that sells out while it sits in an
+2. Re-check availability at submit time, so an item that sells out while it sits in an
    order is caught before the order goes through.
-4. Extract a shared package for types and design tokens, so the two apps stay agreed on
+3. Extract a shared package for types and design tokens, so the two apps stay agreed on
    what a `Product` is and what the primary colour means.
-5. Add product images with `expo-image`, which handles caching and placeholders properly.
-6. Persist in-progress state: the order on the mobile app, the form on the web app, so a
+4. Add product images with `expo-image`, which handles caching and placeholders properly.
+5. Persist in-progress state: the order on the mobile app, the form on the web app, so a
    backgrounded app or a closed tab keeps the work.
-7. Replace the mock APIs with real clients, moving request cancellation and retry
-   handling into that layer.
+6. Verify ABNs against the ATO's ABN Lookup service, confirming that the ABN is
+   registered and active and that the business name matches. The service needs a
+   registered GUID, so the call would go through a backend endpoint.
+7. Move the mocks to MSW, so both apps use real fetch clients and the mocks intercept at
+   the network layer. The same handlers then serve the tests and local development, and
+   switching to a real API needs no application code changes.
 
 ## AI tools used, and how I validated the output
 
@@ -193,10 +192,13 @@ I used Claude to generate most of the code in both apps.
 
 What I did with it:
 
-- **Reviewed the validators, the order reducer and both submit flows**, and read Claude's
-  explanation of each change. These are the places where a plausible-looking wrong answer
-  is most likely and most costly. The ABN checksum is tested with a known valid ABN, the
-  same number with two digits transposed, and an 11-digit number that fails the checksum.
+- **Reviewed the validators and the order reducer closely**, and read Claude's
+  explanation of each change. Given the time box, I prioritised completing every
+  requirement and verifying behaviour through manual testing and the test suites over
+  reading every generated file line by line. My normal practice is to review each file in
+  full, and I will do that before we discuss the solution. The ABN checksum is tested
+  with a known valid ABN, the same number with two digits transposed, and an 11-digit
+  number that fails the checksum.
 - **Tested every flow manually**, in the browser for the web app and on a physical device
   through Expo Go for the mobile app. Component tests say nothing about whether a touch
   target is reachable with a thumb or whether the modal's safe area is right.
@@ -212,4 +214,4 @@ The comments in the code record why a decision was made, because the non-obvious
 such as why the double-submit guard is a ref and why the modal needs its own safe-area
 provider, are what gets lost otherwise.
 
-Time spent: about 3 hours of build time. The dev environment was set up beforehand.
+Time spent: about 4 hours of build time. The dev environment was set up beforehand.
