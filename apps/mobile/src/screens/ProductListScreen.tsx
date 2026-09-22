@@ -52,34 +52,47 @@ export default function ProductListScreen() {
   const [status, setStatus] = useState<Status>('loading');
   const [errorMessage, setErrorMessage] = useState('');
   const [isReviewVisible, setIsReviewVisible] = useState(false);
+  // Bumped on every open so the review modal remounts with clean submit state.
+  // It stays put on close, which leaves the closing animation to play out.
+  const [reviewSessionId, setReviewSessionId] = useState(0);
 
   // Ignores the response of any request that a newer one has superseded.
   const latestRequestRef = useRef(0);
 
-  const load = useCallback(async () => {
+  // Written with `then` rather than `await` so that every state update happens
+  // inside a callback. Nothing here touches state synchronously, which is what
+  // lets the mount effect below call it.
+  const load = useCallback(() => {
     const requestId = latestRequestRef.current + 1;
     latestRequestRef.current = requestId;
 
-    setStatus('loading');
+    fetchProducts().then(
+      (result) => {
+        if (latestRequestRef.current !== requestId) {
+          return;
+        }
 
-    try {
-      const result = await fetchProducts();
+        setProducts(result);
+        setStatus('ready');
+      },
+      (error: unknown) => {
+        if (latestRequestRef.current !== requestId) {
+          return;
+        }
 
-      if (latestRequestRef.current !== requestId) {
-        return;
+        setErrorMessage(error instanceof Error ? error.message : 'Something went wrong.');
+        setStatus('error');
       }
-
-      setProducts(result);
-      setStatus('ready');
-    } catch (error) {
-      if (latestRequestRef.current !== requestId) {
-        return;
-      }
-
-      setErrorMessage(error instanceof Error ? error.message : 'Something went wrong.');
-      setStatus('error');
-    }
+    );
   }, []);
+
+  // The screen already starts in the loading state, so the first load only has
+  // to fetch. Retrying is the one caller that has to move back to it, and it
+  // does that from the button's press handler.
+  const handleRetry = useCallback(() => {
+    setStatus('loading');
+    load();
+  }, [load]);
 
   useEffect(() => {
     load();
@@ -104,6 +117,7 @@ export default function ProductListScreen() {
   }, []);
 
   const handleOpenReview = useCallback(() => {
+    setReviewSessionId((id) => id + 1);
     setIsReviewVisible(true);
   }, []);
 
@@ -157,7 +171,7 @@ export default function ProductListScreen() {
           accessibilityRole="button"
           accessibilityLabel="Retry loading the menu"
           style={styles.retryButton}
-          onPress={load}>
+          onPress={handleRetry}>
           <Text style={styles.retryButtonText}>Retry</Text>
         </Pressable>
       </View>
@@ -213,6 +227,7 @@ export default function ProductListScreen() {
       </View>
 
       <OrderReviewModal
+        key={reviewSessionId}
         visible={isReviewVisible}
         order={order}
         onClose={handleCloseReview}

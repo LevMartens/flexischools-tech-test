@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -17,6 +17,13 @@ import { formatCents } from '../utils/money';
 
 type SubmitStatus = 'idle' | 'submitting' | 'success' | 'error';
 
+/**
+ * Submit state lives here and is reset by remounting: the screen gives this
+ * component a new `key` each time the sheet is opened. Clearing the state from
+ * inside instead would mean writing state in an effect, and doing it on close
+ * or on the modal's `onShow` would flash the previous order's result during
+ * the slide animation.
+ */
 export type OrderReviewModalProps = {
   visible: boolean;
   order: OrderState;
@@ -38,15 +45,6 @@ export function OrderReviewModal({
   // `status` only updates on the next render, so two taps in the same tick can
   // both see 'idle'. The ref flips synchronously and blocks the second one.
   const inFlightRef = useRef(false);
-
-  useEffect(() => {
-    if (visible) {
-      setStatus('idle');
-      setErrorMessage('');
-      setConfirmation(null);
-      inFlightRef.current = false;
-    }
-  }, [visible]);
 
   const handleSubmit = useCallback(async () => {
     if (inFlightRef.current) {
